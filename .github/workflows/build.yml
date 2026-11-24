@@ -1,0 +1,39 @@
+name: Build Floppy Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download FASM
+        run: |
+          mkdir -p /tmp/fasm
+          curl -L -o /tmp/fasm/fasm.tgz https://flatassembler.net/fasm-1.73.32.tgz
+          tar -xzf /tmp/fasm/fasm.tgz -C /tmp/fasm
+          chmod +x /tmp/fasm/fasm/fasm.x64
+
+      - name: Assemble kernel
+        run: |
+          /tmp/fasm/fasm/fasm.x64 os_audited.asm os.img
+
+      - name: Create 1.44 MB floppy image
+        run: |
+          dd if=/dev/zero of=floppy.img bs=512 count=2880
+          dd if=os.img of=floppy.img conv=notrunc
+          ls -lh floppy.img os.img
+
+      - name: Upload floppy image
+        uses: actions/upload-artifact@v4
+        with:
+          name: floppy-image
+          path: floppy.img
+          retention-days: 30
