@@ -669,45 +669,74 @@ tcp_handle_synack:
     mov byte [tcp_state], TCP_ESTABLISHED
     ret
 
+; DHCP client (DISCOVER)
+dhcp_discover:
+    ; Build DHCP DISCOVER in tx_buf
+    ; Ethernet broadcast, IP 0.0.0.0 -> 255.255.255.255, UDP 68->67
+    mov edi, tx_buf
+    ; Ethernet dst broadcast
+    mov eax, 0xFFFFFFFF
+    stosd
+    mov ax, 0xFFFF
+    stosw
+    ; Ethernet src
+    mov esi, mac_addr
+    mov ecx, 6
+    rep movsb
+    ; Ethertype IP
+    mov ax, 0x0008
+    stosw
+    ; Minimal IP + UDP + DHCP header structure
+    ; (full options would follow)
+    mov ecx, 300
+    ret
+
 tcpip_init:
     mov dword [local_ip], 0x0A00020A
     mov dword [gateway], 0x0A000201
     ret
 
 dns_query:
-    mov edi, tx_buf
-    mov eax, 0xFFFFFFFF
-    stosd
-    mov ax, 0xFFFF
+    call dns_build_query
+    ; Transmit would follow
+    ret
+
+; DNS query builder (A record)
+dns_build_query:
+    ; Encode QNAME for duckduckgo.com
+    ; Header + question in tx_buf after UDP
+    mov edi, tx_buf + 42
+    ; Transaction ID
+    mov ax, 0x1234
     stosw
-    mov esi, mac_addr
-    mov ecx, 6
-    rep movsb
-    mov ax, 0x0608
-    stosw
+    ; Flags: standard query
     mov ax, 0x0100
     stosw
-    mov ax, 0x0008
-    stosw
-    mov al, 6
-    stosb
-    mov al, 4
-    stosb
+    ; Questions: 1
     mov ax, 0x0100
     stosw
-    mov esi, mac_addr
-    mov ecx, 6
-    rep movsb
-    mov eax, [local_ip]
-    stosd
+    ; Answer/Auth/Add: 0
     xor eax, eax
     stosd
     stosw
-    mov eax, [gateway]
-    stosd
-    mov esi, tx_buf
-    mov ecx, 42
-    call eth_transmit
+    ; QNAME: duckduckgo.com
+    mov al, 10
+    stosb
+    mov esi, dns_name
+    mov ecx, 10
+    rep movsb
+    mov al, 3
+    stosb
+    mov esi, dns_tld
+    mov ecx, 3
+    rep movsb
+    xor al, al
+    stosb
+    ; QTYPE A, QCLASS IN
+    mov ax, 0x0100
+    stosw
+    mov ax, 0x0100
+    stosw
     ret
 
 ; Helpers
@@ -784,6 +813,8 @@ url_label   db 'URL: ', 0
 fetch_status db 'TCP SYN sent. Receive path ready.', 10
              db 'Live relay required for content.', 10, 0
 local_page db 'Local buffer active.', 10, 0
+dns_name db 'duckduckgo'
+dns_tld  db 'com'
 
 url_buf rb 80
 url_len rd 1
